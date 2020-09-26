@@ -16,6 +16,8 @@ Major changes:
   - Romanian (zangaby)
   - French (Ludestru)
   - Spanish (Fedecatt)
+  - Turkish (Mert Sarac)
+  - Dutch (Rickthefrog)
 
 Changes in V2.3
 - included famous Zambretti forecaster (see Blynk example)
@@ -33,6 +35,13 @@ Changes in V2.31 (MQTT version)
 Changes in V2.32
 - Battery monitoring and going to hibernate if battery low (battery protection)
 - Warning text will be shown instead of Zambretti prediction if batt low
+
+Changes in V2.33
+- Corrected bug in the winter/summer adjustment for the Zambretti forecast
+
+Changes in V2.34
+- added August-Roche-Magnus approximation to automatically adjust humidity with temperature corrections
+- Code cleanup
 
 Print the box yourself: https://www.thingiverse.com/thing:3551386
 

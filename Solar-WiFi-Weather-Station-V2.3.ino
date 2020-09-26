@@ -1,6 +1,6 @@
 
 /*----------------------------------------------------------------------------------------------------
-  Project Name : Solar Powered WiFi Weather Station V2.32
+  Project Name : Solar Powered WiFi Weather Station V2.34
   Features: temperature, dewpoint, dewpoint spread, heat index, humidity, absolute pressure, relative pressure, battery status and
   the famous Zambretti Forecaster (multi lingual)
   Authors: Keith Hungerford, Debasish Dutta and Marc Stähli
@@ -19,7 +19,7 @@
   https://arduinotronics.blogspot.com/2013/12/temp-humidity-w-dew-point-calcualtions.html
 
   For Zambretti Ideas:
-  http://drkfs.net/zambretti.htm
+  http://drkfs.net/zambretti.htm or http://integritext.net/DrKFS/zambretti.htm
   https://raspberrypiandstuff.wordpress.com
   David Bird: https://github.com/G6EJD/ESP32_Weather_Forecaster_TN061
 
@@ -64,8 +64,15 @@
   updated 28/06/19
   -added Italian and Polish tranlation (Chak10) and (TomaszDom)
  
-  Last updated 27/11/19 to V2.32
+  updated 27/11/19 to V2.32
   -added battery protection at 3.3V, sending "batt empty" message and go to hybernate mode
+
+ updated 11/05/20 to v2.33
+  -corrected bug in adjustments for summer/winter
+  
+ updated 27/05/20 to v2.34
+  - added August-Roche-Magnus approximation to automatically adjust humidity with temperature corrections
+  
 
 ////  Features :  //////////////////////////////////////////////////////////////////////////////////////////////////////
                                                                                                                          
@@ -107,6 +114,8 @@ EasyNTPClient ntpClient(udp, NTP_SERVER, TZ_SEC + DST_SEC);
 float measured_temp;
 float measured_humi;
 float measured_pres;
+float adjusted_temp;
+float adjusted_humi;
 float SLpressure_hPa;               // needed for rel pressure calculation
 float HeatIndex;                    // Heat Index in °C
 float volt;
@@ -271,7 +280,7 @@ void setup() {
 //**************************Calculate Zambretti Forecast*******************************************
   
   int accuracy_in_percent = accuracy * 94 / 12;        // 94% is the max predicion accuracy of Zambretti
-  if ( volt > 3.3 ) {                                  // check if batt is still ok
+  if ( volt > 3.4 ) {                                  // check if batt is still ok
     ZambrettisWords = ZambrettiSays(char(ZambrettiLetter()));
     forecast_in_words = TEXT_ZAMBRETTI_FORECAST;
     pressure_in_words = TEXT_AIR_PRESSURE;
@@ -376,16 +385,13 @@ void measurementEvent() {
 
   // Get temperature
   measured_temp = bme.readTemperature();
-  measured_temp = measured_temp + TEMP_CORR;
   // print on serial monitor
   Serial.print("Temp: ");
   Serial.print(measured_temp);
   Serial.print("°C; ");
  
-  // Get humidity
+ // Get humidity
   measured_humi = bme.readHumidity();
-  measured_humi = measured_humi + HUMI_CORR;
-  if (measured_humi > 100) measured_humi = 100;    // the HUMI_CORR might lead in a value higher than 100%
   // print on serial monitor
   Serial.print("Humidity: ");
   Serial.print(measured_humi);
@@ -414,6 +420,20 @@ void measurementEvent() {
   Serial.print("Dewpoint: ");
   Serial.print(DewpointTemperature);
   Serial.println("°C; ");
+
+  // With the dewpoint calculated we can correct temp and automatically calculate humidity
+  adjusted_temp = measured_temp + TEMP_CORR;
+  if (adjusted_temp < DewpointTemperature) adjusted_temp = DewpointTemperature; //compensation, if offset too high
+  //August-Roche-Magnus approximation (http://bmcnoldy.rsmas.miami.edu/Humidity.html)
+  adjusted_humi = 100 * (exp((a * DewpointTemperature) / (b + DewpointTemperature)) / exp((a * adjusted_temp) / (b + adjusted_temp)));
+  if (adjusted_humi > 100) adjusted_humi = 100;    // just in case
+  // print on serial monitor
+  Serial.print("Temp adjusted: ");
+  Serial.print(adjusted_temp);
+  Serial.print("°C; ");
+  Serial.print("Humidity adjusted: ");
+  Serial.print(adjusted_humi);
+  Serial.print("%; ");
 
   // Calculate dewpoint spread (difference between actual temp and dewpoint -> the smaller the number: rain or fog
 
@@ -514,8 +534,10 @@ char ZambrettiLetter() {
   int(z_trend) = CalculateTrend();
   // Case trend is falling
   if (z_trend == -1) {
-    float zambretti = 0.0009746 * rel_pressure_rounded * rel_pressure_rounded - 2.1068 * rel_pressure_rounded + 1138.7019; 
+    float zambretti = 0.0009746 * rel_pressure_rounded * rel_pressure_rounded - 2.1068 * rel_pressure_rounded + 1138.7019;
+    //A Winter falling generally results in a Z value lower by 1 unit
     if (month(current_timestamp) < 4 || month(current_timestamp) > 9) zambretti = zambretti + 1;
+    if (zambretti > 9) zambretti = 9;
     Serial.print("Calculated and rounded Zambretti in numbers: ");
     Serial.println(round(zambretti));
     switch (int(round(zambretti))) {
@@ -554,7 +576,8 @@ char ZambrettiLetter() {
   if (z_trend == 1) {
     float zambretti = 142.57 - 0.1376 * rel_pressure_rounded;
     //A Summer rising, improves the prospects by 1 unit over a Winter rising
-    if (month(current_timestamp) < 4 || month(current_timestamp) > 9) zambretti = zambretti + 1;
+    if (month(current_timestamp) >= 4 && month(current_timestamp) <= 9) zambretti = zambretti - 1;
+    if (zambretti < 0) zambretti = 0;
     Serial.print("Calculated and rounded Zambretti in numbers: ");
     Serial.println(round(zambretti));
     switch (int(round(zambretti))) {
